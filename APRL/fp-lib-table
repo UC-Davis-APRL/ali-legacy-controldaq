@@ -1,6 +1,0 @@
-(fp_lib_table
-  (version 7)
-  (lib (name "digikey-footprints")(type "KiCad")(uri "C:/Users/hieu/Downloads/digikey-kicad-library-master/digikey-kicad-library-master/digikey-footprints.pretty")(options "")(descr ""))
-  (lib (name "switch")(type "KiCad")(uri "${KIPRJMOD}/GPTS203211B/switch.pretty")(options "")(descr ""))
-  (lib (name "footprints")(type "KiCad")(uri "${KIPRJMOD}/footprints.pretty")(options "")(descr ""))
-)
