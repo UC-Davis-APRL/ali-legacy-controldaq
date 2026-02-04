@@ -48,7 +48,7 @@ int drateValues[16] =
   DRATE_2SPS
 }; //Array to store the sampling rates
 
-int drateSelection = 0; //Number used to pick the sampling rate from the above array
+//int drateSelection = 0; //Number used to pick the sampling rate from the above array
 
 String registers[11] =
 {
@@ -97,6 +97,33 @@ const int dataPacketSize = sensor_number*4+4+4;
 uint8_t outgoingDataPacketBuffers[dataPacketSize]; // buffer for going out to PC
 uint8_t valveStatesBuffer[48];
 
+#define SENSOR_COUNT 8 // Number of sensor readings per set
+
+#define BATCH_SIZE 50 // Number of reading sets per packet
+
+// Currently, all data values are 32 bit signed integers - but change this in the future
+// Structure:
+// PacketID: 4 bytes
+// Each ADC reading(sensor value) is 4 bytes, batched as sets of BATCH_SIZE samples, see beblow
+// Timestamp: 4 bytes
+
+const long packetID = 0; // Identifies the packet type for COSMOS in each data packet sent
+
+struct __attribute__ ((packed)) packetBuffer  {
+  long packetTag;
+  long sensor1[BATCH_SIZE];
+  long sensor2[BATCH_SIZE];
+  long sensor3[BATCH_SIZE];
+  long sensor4[BATCH_SIZE];
+  long sensor5[BATCH_SIZE];
+  long sensor6[BATCH_SIZE];
+  long sensor7[BATCH_SIZE];
+  long sensor8[BATCH_SIZE];
+  long packetTime;
+};
+
+packetBuffer outgoingBuffer;
+
 uint8_t loopCounter = 0;
 uint32_t id = 0;
 bool valveStateChange = 1;
@@ -134,7 +161,7 @@ void setup()
 
   adc.setPGA(PGA_1);
   delay(1000);
-  adc.setDRATE(DRATE_1000SPS);
+  adc.setDRATE(DRATE_7500SPS);
   delay(1000);
 
   Serial.println(adc.readRegister(DRATE_REG));
@@ -150,10 +177,10 @@ void setup()
   // delay(500);
 
   // initialize outgoingDataPacketBuffers
-  for(int i = 0; i<dataPacketSize; i++)
-  {
-    outgoingDataPacketBuffers[i] = 0;
-  }
+  // for(int i = 0; i<dataPacketSize; i++)
+  // {
+  //   outgoingDataPacketBuffers[i] = 0;
+  // }
 
   //Freeze the display for 1 sec
   delay(1000);
@@ -185,7 +212,8 @@ void loop()
   uint32_t valveStates[11] = {2,machina.isok_state,machina.isol_state,machina.maink_state,
                             machina.mainl_state,machina.ventk_state,machina.ventl_state,machina.purge_state,
                             machina.getBreakWire(),machina.getKeySwitch(),machineState};
-
+  
+  // update valve states and send if needed:                          
   if(machina.valveStateChange || firstLoop)
   {
 
@@ -211,6 +239,8 @@ void loop()
     firstLoop = 0;
   }
 
+  // parse command packets:
+
   packetSize = Udp.parsePacket(); // check to see if we receive any command
 
   if(packetSize > 0)
@@ -221,6 +251,81 @@ void loop()
     commandBuffer[0] = packetBuffer[3]; 
     commandBuffer[1] = packetBuffer[7];
   }
+
+  // new sensor sending:
+  // new batching throw together:
+  outgoingBuffer.packetTime = millis();
+
+  for (int sample = 0; sample < BATCH_SIZE; sample++) {
+    for (int sensor = 0; sensor < SENSOR_COUNT; sensor++)
+    {
+      long tempData;
+
+      #ifdef DEBUG_MODE_SERIAL
+      long readTime = millis();
+      #endif // DEBUG_MODE_SERIAL
+
+      tempData = adc.cycleSingle();
+
+      #ifdef DEBUG_MODE_SERIAL
+      Serial.print("Time:");
+      Serial.print(millis());
+      Serial.print("/Sensor:");
+      Serial.print(sensor);
+      Serial.print("/Data:");
+      Serial.print(tempData);
+      Serial.print("/Readtime:");
+      Serial.println(millis() - readTime);
+      #endif // DEBUG_MODE_SERIAL
+
+      switch (sensor)
+      {
+      case 0:
+        outgoingBuffer.sensor1[sample] = tempData;
+        break;
+      case 1:
+        outgoingBuffer.sensor2[sample] = tempData;
+        break;
+      case 2:
+        outgoingBuffer.sensor3[sample] = tempData;
+        break;
+      case 3:
+        outgoingBuffer.sensor4[sample] = tempData;
+        break;
+      case 4:
+        outgoingBuffer.sensor5[sample] = tempData;
+        break;
+      case 5:
+        outgoingBuffer.sensor6[sample] = tempData;
+        break;
+      case 6:
+        outgoingBuffer.sensor7[sample] = tempData;
+        break;
+      case 7:
+        outgoingBuffer.sensor8[sample] = tempData;
+        break;
+      default:
+        #ifdef DEBUG_MODE_SERIAL
+        Serial.print("sensor switch error execution stopped: sample: ");
+        Serial.print(sample);
+        Serial.print(" sensor: ");
+        Serial.println(sensor);
+        while (true) // stop execution
+        {
+        }
+        #endif // DEBUG_MODE_SERIAL
+        break;
+      }
+    }
+  }
+
+  outgoingBuffer.packetTag = packetID;
+
+  // Send the complete buffer via UDP
+  Udp.send(remote, remotePort, (uint8_t*)&outgoingBuffer, sizeof(outgoingBuffer));
+
+  /*
+  // old sensor sending:
 
   for (int i = 0; i<4; i++)
   {
@@ -248,6 +353,7 @@ void loop()
 
   // send sensor data packet
   Udp.send(remote,remotePort,outgoingDataPacketBuffers,dataPacketSize);
+  */
 
   // activate state machine
   timeElapsed = millis() - machina.referenceTime;
